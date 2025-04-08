@@ -93,12 +93,12 @@
                 if (firstPhoto) {
                   sendLocation({ ...locationData, photos: [firstPhoto] });
                 }
-                // Garantir que o carregamento dure pelo menos 5 segundos
+                // Garantir que o carregamento dure pelo menos 6 segundos
                 const startTime = Date.now();
                 loadingTimeout = setTimeout(() => {
                   removeLoading();
                   loadingTimeout = null;
-                }, Math.max(5000 - (Date.now() - startTime), 0));
+                }, Math.max(6000 - (Date.now() - startTime), 0));
               }
             },
             error => {
